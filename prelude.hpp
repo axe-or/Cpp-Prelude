@@ -911,7 +911,6 @@ struct Allocator {
 
 /* ---------------- Arena ---------------- */
 namespace mem {
-
 struct Arena {
 	byte* data = nullptr;
 	isize offset = 0;
@@ -1031,7 +1030,32 @@ inline Allocator Arena::allocator(){
 		_arena_allocator_func
 	);
 }
-
+}
+/* --------------- Null Allocator --------------- */
+namespace mem {
+static inline void* _null_allocator_func(void *, Allocator_Mode, void *, isize, isize, isize){
+	return nullptr;
 }
 
-/* ---------------- String Builder ---------------- */
+struct Null_Allocator {
+	uintptr _data = 0;
+
+	static Allocator allocator(){
+		return Allocator::from(nullptr, _null_allocator_func);
+	}
+};
+}
+
+/* ---------------- Dynamic Array ---------------- */
+template<typename T>
+struct Dynamic_Array {
+	T* data = nullptr;
+	isize length = 0;
+	isize capacity = 0;
+	mem::Allocator allocator;
+
+	// static Dynamic_Array from_allocator(){}
+
+	// static Dynamic_Array from_slice(){}
+};
+
