@@ -9,7 +9,7 @@ int main(){
 	static byte arena_mem[40000];
 	auto arena = Arena::from_bytes(slice<byte>::from(arena_mem, 40000));
 	auto allocator = arena.allocator();
-	auto numbers = allocator.make_slice<int>(16);
+	auto numbers = allocator.make_slice<int>(16).unwrap();
 
 	for(auto [x, i] : numbers.index_iter()){
 		numbers[i] = x + i + 69;
