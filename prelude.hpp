@@ -223,7 +223,7 @@ private:
 public:
 	T unwrap() const {
 		if(!_has_value){
-			panic("Attempt to unwrap error result");
+			throw _error;
 		}
 		return _value;
 	}
@@ -240,13 +240,6 @@ public:
 	}
 
 	E unwrap_err_unchecked() const {
-		return _error;
-	}
-
-	E unwrap_err(){
-		if(_has_value){
-			panic("Attempt to unwrap_err value result");
-		}
 		return _error;
 	}
 
@@ -868,14 +861,16 @@ enum struct Allocator_Error : u8 {
 	out_of_memory,
 	failed_resize,
 	pointer_not_owned,
-	mode_not_supported,
 	bad_align,
 };
 
+// Allocator function, returns a error value
 using Allocator_Func = Result<void *, Allocator_Error> (*)(
     void *impl, Allocator_Mode mode, void *ptr, isize old_size, isize size,
     isize align);
 
+// Allocator interface, when the implementation returns an error value, it
+// throws it unless the `_checked` version of the method is used.
 struct Allocator {
 	void* _impl = nullptr;
 	Allocator_Func _func = nullptr;
@@ -884,32 +879,66 @@ struct Allocator {
 
 	// Allocate chunk of aligned memory (zero-initialized)
 	auto alloc(isize size, isize align){
-		return _func(_impl, Mode::alloc, nullptr, 0, size, align);
+		return _func(_impl, Mode::alloc, nullptr, 0, size, align).unwrap();
 	}
 
 	// Allocate chunk of aligned memory (not initialized)
 	auto alloc_non_zero(isize size, isize align){
-		return _func(_impl, Mode::alloc_non_zero, nullptr, 0, size, align);
+		return _func(_impl, Mode::alloc_non_zero, nullptr, 0, size, align).unwrap();
 	}
 
 	// Mark pointer that belongs to allocator as free
-	auto free(void* ptr, isize old_size = 0){
-		return _func(_impl, Mode::free, ptr, old_size, 0, 0);
+	void free(void* ptr, isize old_size = 0){
+		_func(_impl, Mode::free, ptr, old_size, 0, 0);
 	}
 
 	// Mark all memory belonging to allocator as free
-	auto free_all(){
-		return _func(_impl, Mode::free_all, nullptr, 0, 0, 0);
+	void free_all(){
+		_func(_impl, Mode::free_all, nullptr, 0, 0, 0);
 	}
 
 	// Attempt to resize allocation in-place. Returns null on failure.
 	auto resize(void* ptr, isize new_size, isize old_size){
+		return _func(_impl, Mode::resize, ptr, old_size, new_size, 0).unwrap();
+	}
+
+	// Allocate chunk of aligned memory (zero-initialized)
+	auto alloc_checked(isize size, isize align){
+		return _func(_impl, Mode::alloc, nullptr, 0, size, align);
+	}
+
+	// Allocate chunk of aligned memory (not initialized)
+	auto alloc_non_zero_checked(isize size, isize align){
+		return _func(_impl, Mode::alloc_non_zero, nullptr, 0, size, align);
+	}
+
+	// NOTE: Free and free all usually don't fail, but on their checked
+	// versions we allow it so double-free's may be detected.
+
+	// Mark pointer that belongs to allocator as free
+	auto free_checked(void* ptr, isize old_size = 0){
+		return _func(_impl, Mode::free, ptr, old_size, 0, 0);
+	}
+
+	// Mark all memory belonging to allocator as free
+	auto free_all_checked(){
+		return _func(_impl, Mode::free_all, nullptr, 0, 0, 0);
+	}
+
+	// Attempt to resize allocation in-place. Returns null on failure.
+	auto resize_checked(void* ptr, isize new_size, isize old_size){
 		return _func(_impl, Mode::resize, ptr, old_size, new_size, 0);
 	}
 
 	template<typename T>
-	Result<T*, Allocator_Error> make(){
+	T* make(){
 		auto res = alloc(sizeof(T), alignof(T));
+		return (T*) res;
+	}
+	
+	template<typename T>
+	Result<T*, Allocator_Error> make_checked(){
+		auto res = alloc_checked(sizeof(T), alignof(T));
 		if(res.ok()){
 			return (T*)res.unwrap_unchecked();
 		} else {
@@ -918,8 +947,14 @@ struct Allocator {
 	}
 
 	template<typename T>
-	Result<slice<T>, Allocator_Error> make_slice(isize count){
-		auto res = alloc(sizeof(T) * count, alignof(T));
+	slice<T> make_slice(isize count){
+		auto res = (T*) alloc(sizeof(T) * count, alignof(T));
+		return slice<T>::from(res, count);
+	}
+
+	template<typename T>
+	Result<slice<T>, Allocator_Error> make_slice_checked(isize count){
+		auto res = (T*) alloc(sizeof(T) * count, alignof(T));
 		if(res.ok()){
 			return slice<T>::from((T*)res.unwrap_unchecked(), count);
 		} else {
@@ -1065,7 +1100,7 @@ static inline Result<void*, Allocator_Error> _arena_allocator_func(
 	} break;
 
 	case Allocator_Mode::free: {
-		return Allocator_Error::mode_not_supported;
+		/* Nothing */
 	} break;
 
 	case Allocator_Mode::free_all: {
