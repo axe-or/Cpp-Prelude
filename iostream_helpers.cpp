@@ -53,3 +53,13 @@ auto& operator<<(std::ostream& os, slice<T> s){
 	os << ']';
 	return os;
 }
+
+template<typename T>
+auto& operator<<(std::ostream& os, Dynamic_Array<T> s){
+	os << "len: " << s.len() << " cap: " << s.cap() << " [ ";
+	for(isize i = 0; i < s.len(); i += 1){
+		os << s[i] << ' ';
+	}
+	os << ']';
+	return os;
+}

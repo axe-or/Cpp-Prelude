@@ -8,6 +8,12 @@
 #include <stdbool.h>
 #include <limits.h>
 #include <atomic>
+#include <source_location>
+
+#define caller_location \
+	std::source_location const& source_location = std::source_location::current()
+
+using Source_Location = std::source_location;
 
 using i8 = int8_t;
 using i16 = int16_t;
@@ -128,44 +134,50 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 
 /* ---------------- Assert & Panic ---------------- */
 #include <stdio.h>
-#define MAX_PANIC_MSG_LEN 2048
+#define MAX_PANIC_MSG_LEN 1024
 
 extern "C" {
 [[noreturn]] void abort() noexcept;
+extern int puts (char const*);
+extern int snprintf (char *, size_t, char const *, ...);
 }
 
 [[noreturn]] static inline
-void panic_ex(cstring msg, cstring file, i32 line){
+void panic(cstring msg, caller_location){
 	char buf[MAX_PANIC_MSG_LEN];
-	int n = snprintf(buf, MAX_PANIC_MSG_LEN - 1, "%s:%d Panic: %s", file, line, msg);
+	int n = snprintf(buf, MAX_PANIC_MSG_LEN - 1, "%s:%d Panic: %s", source_location.file_name(), source_location.line(), msg);
 	buf[n] = 0;
 	puts(buf);
 	abort();
 }
 
 static inline constexpr
-void assert_ex(bool predicate, cstring msg, cstring file, i32 line){
+void _assert_impl(bool predicate, cstring msg, caller_location){
 	[[unlikely]] if(!predicate){
 		char buf[MAX_PANIC_MSG_LEN] = {0};
-		snprintf(buf, MAX_PANIC_MSG_LEN - 1, "%s:%d Assertion failed: %s\n", file, line, msg);
+		snprintf(buf, MAX_PANIC_MSG_LEN - 1, "%s:%d Assertion failed: %s\n", source_location.file_name(), source_location.line(), msg);
 		puts(buf);
 		abort();
 	}
 }
 
-#ifdef assert
-#undef assert
-#endif
-
-#define assert(Pred, Msg) assert_ex((Pred), (Msg), __FILE__, __LINE__)
-
-#ifndef DISABLE_BOUNDS_CHECK
-#define bounds_check(Pred, Msg) assert_ex((Pred), (Msg), __FILE__, __LINE__)
+static inline constexpr
+void assert(bool predicate, cstring msg, caller_location){
+#ifndef DISABLE_ASSERT
+	_assert_impl(predicate, msg, source_location);
 #else
-#define bounds_check(Pred, Msg)
+	(void)predicate; (void)msg; (void)caller_location;
 #endif
+}
 
-#define panic(Msg) panic_ex((Msg), __FILE__, __LINE__)
+static inline constexpr
+void bounds_check(bool predicate, cstring msg, caller_location){
+#ifndef DISABLE_BOUNDS_CHECK
+	_assert_impl(predicate, msg, source_location);
+#else
+	(void)predicate; (void)msg; (void)caller_location;
+#endif
+}
 
 #undef MAX_PANIC_MSG_LEN
 
@@ -175,9 +187,9 @@ struct Option {
 	union { T _value; };
 	bool _has_value = false;
 
-	T unwrap() const {
+	T unwrap(caller_location) const {
 		if(!_has_value){
-			panic("Attempt to unwrap empty optional");
+			panic("Attempt to unwrap empty optional", source_location);
 		}
 		return _value;
 	}
@@ -221,9 +233,9 @@ private:
 	bool _has_value = false;
 
 public:
-	T unwrap() const {
+	T unwrap(caller_location) const {
 		if(!_has_value){
-			throw _error;
+			panic("Cannot unwrap error value", source_location);
 		}
 		return _value;
 	}
@@ -865,9 +877,9 @@ enum struct Allocator_Error : u8 {
 };
 
 // Allocator function, returns a error value
-using Allocator_Func = Result<void *, Allocator_Error> (*)(
+using Allocator_Func = void* (*)(
     void *impl, Allocator_Mode mode, void *ptr, isize old_size, isize size,
-    isize align);
+    isize align, Source_Location const& source_location);
 
 // Allocator interface, when the implementation returns an error value, it
 // throws it unless the `_checked` version of the method is used.
@@ -878,102 +890,54 @@ struct Allocator {
 	using Mode = Allocator_Mode;
 
 	// Allocate chunk of aligned memory (zero-initialized)
-	auto alloc(isize size, isize align){
-		return _func(_impl, Mode::alloc, nullptr, 0, size, align).unwrap();
+	auto alloc(isize size, isize align, caller_location){
+		return _func(_impl, Mode::alloc, nullptr, 0, size, align, source_location);
 	}
 
 	// Allocate chunk of aligned memory (not initialized)
-	auto alloc_non_zero(isize size, isize align){
-		return _func(_impl, Mode::alloc_non_zero, nullptr, 0, size, align).unwrap();
+	auto alloc_non_zero(isize size, isize align, caller_location){
+		return _func(_impl, Mode::alloc_non_zero, nullptr, 0, size, align, source_location);
 	}
 
 	// Mark pointer that belongs to allocator as free
-	void free(void* ptr, isize old_size = 0){
-		_func(_impl, Mode::free, ptr, old_size, 0, 0);
+	void free(void* ptr, isize old_size = 0, caller_location){
+		_func(_impl, Mode::free, ptr, old_size, 0, 0, source_location);
 	}
 
 	// Mark all memory belonging to allocator as free
-	void free_all(){
-		_func(_impl, Mode::free_all, nullptr, 0, 0, 0);
+	void free_all(caller_location){
+		_func(_impl, Mode::free_all, nullptr, 0, 0, 0, source_location);
 	}
 
-	// Attempt to resize allocation in-place. Returns null on failure.
-	auto resize(void* ptr, isize new_size, isize old_size){
-		return _func(_impl, Mode::resize, ptr, old_size, new_size, 0).unwrap();
-	}
-
-	// Allocate chunk of aligned memory (zero-initialized)
-	auto alloc_checked(isize size, isize align){
-		return _func(_impl, Mode::alloc, nullptr, 0, size, align);
-	}
-
-	// Allocate chunk of aligned memory (not initialized)
-	auto alloc_non_zero_checked(isize size, isize align){
-		return _func(_impl, Mode::alloc_non_zero, nullptr, 0, size, align);
-	}
-
-	// NOTE: Free and free all usually don't fail, but on their checked
-	// versions we allow it so double-free's may be detected.
-
-	// Mark pointer that belongs to allocator as free
-	auto free_checked(void* ptr, isize old_size = 0){
-		return _func(_impl, Mode::free, ptr, old_size, 0, 0);
-	}
-
-	// Mark all memory belonging to allocator as free
-	auto free_all_checked(){
-		return _func(_impl, Mode::free_all, nullptr, 0, 0, 0);
-	}
-
-	// Attempt to resize allocation in-place. Returns null on failure.
-	auto resize_checked(void* ptr, isize new_size, isize old_size){
-		return _func(_impl, Mode::resize, ptr, old_size, new_size, 0);
+	// Attempt to resize allocation in-place.
+	auto resize(void* ptr, isize new_size, isize old_size, caller_location){
+		return _func(_impl, Mode::resize, ptr, old_size, new_size, 0, source_location);
 	}
 
 	template<typename T>
-	T* make(){
-		auto res = alloc(sizeof(T), alignof(T));
+	T* make(caller_location){
+		auto res = alloc(sizeof(T), alignof(T), source_location);
 		return (T*) res;
 	}
 	
 	template<typename T>
-	Result<T*, Allocator_Error> make_checked(){
-		auto res = alloc_checked(sizeof(T), alignof(T));
-		if(res.ok()){
-			return (T*)res.unwrap_unchecked();
-		} else {
-			return res.unwrap_err_unchecked();
-		}
-	}
-
-	template<typename T>
-	slice<T> make_slice(isize count){
-		auto res = (T*) alloc(sizeof(T) * count, alignof(T));
+	slice<T> make_slice(isize count, caller_location){
+		auto res = (T*) alloc(sizeof(T) * count, alignof(T), source_location);
 		return slice<T>::from(res, count);
 	}
 
 	template<typename T>
-	Result<slice<T>, Allocator_Error> make_slice_checked(isize count){
-		auto res = (T*) alloc(sizeof(T) * count, alignof(T));
-		if(res.ok()){
-			return slice<T>::from((T*)res.unwrap_unchecked(), count);
-		} else {
-			return res.unwrap_err_unchecked();
-		}
+	void destroy(T* ptr, caller_location){
+		free((void*)ptr, sizeof(T), source_location);
 	}
 
 	template<typename T>
-	void destroy(T* ptr){
-		free((void*)ptr, sizeof(T));
+	void destroy(slice<T> s, caller_location){
+		free((void*)s.raw_data(), s.len() * sizeof(T), source_location);
 	}
 
-	template<typename T>
-	void destroy(slice<T> s){
-		free((void*)s.raw_data(), s.len() * sizeof(T));
-	}
-
-	void destroy(string s){
-		free((void*)s.raw_data(), s.len());
+	void destroy(string s, caller_location){
+		free((void*)s.raw_data(), s.len(), source_location);
 	}
 
 	static Allocator from(void* impl, Allocator_Func func) {
@@ -1064,39 +1028,39 @@ struct Arena {
 	Allocator allocator(); /* Defined below */
 };
 
-static inline Result<void*, Allocator_Error> _arena_allocator_func(
+static inline void* _arena_allocator_func(
 	void *impl,
 	Allocator_Mode mode,
 	void *ptr,
 	[[maybe_unused]] isize old_size,
 	isize size,
-	isize align
+	isize align,
+	[[maybe_unused]] caller_location
 ){
 	auto arena = (Arena*)impl;
 	switch (mode) {
 	case Allocator_Mode::alloc_non_zero: {
 		void* p = arena->alloc_non_zero(size, align);
 		if(!p){
-			return Allocator_Error::out_of_memory;
-		} else {
-			return p;
+			throw Allocator_Error::out_of_memory;
 		}
+		return p;
 	} break;
 
 	case Allocator_Mode::alloc: {
 		void* p = arena->alloc(size, align);
-		if(!p)
-			return Allocator_Error::out_of_memory;
-		else
-			return p;
+		if(!p){
+			throw Allocator_Error::out_of_memory;
+		}
+		return p;
 	} break;
 
 	case Allocator_Mode::resize: {
 		void* p = arena->resize(ptr, size);
-		if(!p)
-			return Allocator_Error::failed_resize;
-		else
-			return p;
+		if(!p){
+			return nullptr;
+		}
+		return p;
 	} break;
 
 	case Allocator_Mode::free: {
@@ -1118,10 +1082,11 @@ inline Allocator Arena::allocator(){
 	);
 }
 }
+
 /* --------------- Null Allocator --------------- */
 namespace mem {
-static inline Result<void*, Allocator_Error> _null_allocator_func(void *, Allocator_Mode, void *, isize, isize, isize){
-	return nullptr;
+static inline void* _null_allocator_func(void *, Allocator_Mode, void *, isize, isize, isize, Source_Location const&){
+	throw Allocator_Error::out_of_memory;
 }
 
 struct Null_Allocator {
@@ -1141,8 +1106,84 @@ struct Dynamic_Array {
 	isize capacity = 0;
 	mem::Allocator allocator;
 
-	// static Dynamic_Array from_allocator(){}
+	auto len() const { return length; }
 
-	// static Dynamic_Array from_slice(){}
+	auto cap() const { return capacity; }
+
+
+	void resize(isize new_cap){
+		isize new_size = new_cap * sizeof(T);
+		isize old_size = length * sizeof(T);
+
+		void* new_data = allocator.resize((void*) data, new_size, old_size);
+		if(new_data == nullptr){
+			new_data = allocator.alloc(new_size, alignof(T));
+		}
+
+		mem::copy(new_data, data, min(new_size, old_size));
+		allocator.free(data, old_size);
+
+		data     = (T*)new_data;
+		capacity = new_cap;
+		length   = min(length, new_cap);
+	}
+
+	void append(T val){
+		if(length >= capacity){
+			resize(max(isize(16), length * 2));
+		}
+		data[length] = val;
+		length += 1;
+	}
+
+	void pop(){
+		length = min(length - 1, isize(0));
+	}
+
+	void insert(isize idx, T val){
+		if(length >= capacity){
+			resize(max(isize(16), length * 2));
+		}
+		mem::copy(&data[idx+1], &data[idx], sizeof(T) * (length - idx));
+		data[idx] = val;
+	}
+
+	T& operator[](isize idx){
+		bounds_check(idx >= 0 && idx <= length, "Index out of bounds");
+		return data[idx];
+	}
+
+	T const& operator[](isize idx) const {
+		bounds_check(idx >= 0 && idx <= length, "Index out of bounds");
+		return data[idx];
+	}
+
+	slice<T> sub(){
+		auto s = slice<T>::from(&data[0], length);
+		return s;
+	}
+
+	slice<T> sub(isize idx, isize len){
+		auto s = slice<T>::from(&data[idx], len);
+		return s;
+	}
+
+	/* C++ Iterator Insanity */
+	auto begin(){ return sub().begin(); }
+
+	auto end(){ return sub().end(); }
+
+	auto index_iter() { return sub().index_iter(); }
+
+	static Dynamic_Array<T> from(mem::Allocator allocator, isize initial_cap = 16){
+		Dynamic_Array<T> arr;
+		arr.allocator = allocator;
+		if(initial_cap > 0){
+			arr.data = (int*)allocator.alloc(sizeof(T) * initial_cap, alignof(T));
+			arr.capacity = initial_cap;
+		}
+		return arr;
+	}
+
 };
 
