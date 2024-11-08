@@ -137,7 +137,7 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 #define MAX_PANIC_MSG_LEN 1024
 
 extern "C" {
-[[noreturn]] void abort() noexcept;
+[[noreturn]] void abort() ;
 extern int puts (char const*);
 extern int snprintf (char *, size_t, char const *, ...);
 }
@@ -881,8 +881,7 @@ using Allocator_Func = void* (*)(
     void *impl, Allocator_Mode mode, void *ptr, isize old_size, isize size,
     isize align, Source_Location const& source_location);
 
-// Allocator interface, when the implementation returns an error value, it
-// throws it unless the `_checked` version of the method is used.
+// Allocator interface
 struct Allocator {
 	void* _impl = nullptr;
 	Allocator_Func _func = nullptr;
@@ -1146,6 +1145,13 @@ struct Dynamic_Array {
 		}
 		mem::copy(&data[idx+1], &data[idx], sizeof(T) * (length - idx));
 		data[idx] = val;
+		length += 1;
+	}
+
+	void remove(isize idx){
+		if(length <= 0){ return; }
+		mem::copy(&data[idx], &data[idx+1], sizeof(T) * (length - idx));
+		length -= 1;
 	}
 
 	T& operator[](isize idx){
@@ -1168,12 +1174,11 @@ struct Dynamic_Array {
 		return s;
 	}
 
-	/* C++ Iterator Insanity */
-	auto begin(){ return sub().begin(); }
-
-	auto end(){ return sub().end(); }
-
-	auto index_iter() { return sub().index_iter(); }
+	void deinit(){
+		allocator.free(data);
+		data = nullptr;
+		capacity = 0;
+	}
 
 	static Dynamic_Array<T> from(mem::Allocator allocator, isize initial_cap = 16){
 		Dynamic_Array<T> arr;
@@ -1184,6 +1189,11 @@ struct Dynamic_Array {
 		}
 		return arr;
 	}
+
+	/* C++ Iterator Insanity */
+	auto begin(){ return sub().begin(); }
+	auto end(){ return sub().end(); }
+	auto index_iter() { return sub().index_iter(); }
 
 };
 

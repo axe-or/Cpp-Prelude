@@ -13,12 +13,18 @@ int main(){
 	auto numbers = Dynamic_Array<i32>::from(allocator);
 
 	for(int i = 0; i < 30; i ++){
-		numbers.append(0);
+		numbers.append(i);
 	}
 
-	for(auto [x, i] : numbers.index_iter()){
-		numbers[i] = x + i + 69;
-	}
+	numbers.insert(20, 69);
+	numbers.insert(0, 69);
+	numbers.insert(numbers.len(), 69);
+
+	numbers.remove(0);
+	numbers.remove(20);
+	numbers.remove(numbers.len() - 1);
+
+
 	print(numbers);
 
 }
