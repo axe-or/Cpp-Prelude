@@ -1140,6 +1140,7 @@ struct Dynamic_Array {
 	}
 
 	void insert(isize idx, T val){
+		bounds_check(idx >= 0 && idx <= length, "Index out of bounds");
 		if(length >= capacity){
 			resize(max(isize(16), length * 2));
 		}
@@ -1149,6 +1150,7 @@ struct Dynamic_Array {
 	}
 
 	void remove(isize idx){
+		bounds_check(idx >= 0 && idx <= length, "Index out of bounds");
 		if(length <= 0){ return; }
 		mem::copy(&data[idx], &data[idx+1], sizeof(T) * (length - idx));
 		length -= 1;
