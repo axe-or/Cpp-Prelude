@@ -9,6 +9,8 @@ int main(){
 	static byte arena_mem[40000];
 	auto arena = Arena::from_bytes(slice<byte>::from(arena_mem, 40000));
 	auto allocator = arena.allocator();
+	defer(allocator.free_all());
+
 
 	auto numbers = Dynamic_Array<i32>::from(allocator);
 
@@ -16,13 +18,9 @@ int main(){
 		numbers.append(i);
 	}
 
-	numbers.insert(20, 69);
-	numbers.insert(0, 69);
-	numbers.insert(numbers.len(), 69);
-
+	numbers.resize(1);
 	numbers.remove(0);
-	numbers.remove(20);
-	numbers.remove(numbers.len() - 1);
+
 
 
 	print(numbers);
