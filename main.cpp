@@ -2,7 +2,6 @@
 
 #include "iostream_helpers.cpp"
 
-
 int main(){
 	using mem::Arena, atomic::Memory_Order;
 
@@ -10,7 +9,6 @@ int main(){
 	auto arena = Arena::from_bytes(slice<byte>::from(arena_mem, 40000));
 	auto allocator = arena.allocator();
 	defer(allocator.free_all());
-
 
 	auto numbers = Dynamic_Array<i32>::from(allocator);
 
@@ -21,9 +19,6 @@ int main(){
 	numbers.resize(1);
 	numbers.remove(0);
 
-
-
 	print(numbers);
-
 }
 

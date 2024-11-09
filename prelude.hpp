@@ -137,7 +137,7 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 #define MAX_PANIC_MSG_LEN 1024
 
 extern "C" {
-[[noreturn]] void abort() ;
+[[noreturn]] void abort() noexcept; /* WARN: may break on some systems, remove/include `noexcept` as needed. */
 extern int puts (char const*);
 extern int snprintf (char *, size_t, char const *, ...);
 }
