@@ -133,13 +133,13 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 }
 
 /* ---------------- Assert & Panic ---------------- */
-#include <stdio.h>
 #define MAX_PANIC_MSG_LEN 1024
 
 extern "C" {
-[[noreturn]] void abort() noexcept; /* WARN: may break on some systems, remove/include `noexcept` as needed. */
+/* WARN: may break on some systems, remove/include `noexcept` as needed. */
+[[noreturn]] void abort() noexcept;
 extern int puts (char const*);
-extern int snprintf (char *, size_t, char const *, ...);
+extern int snprintf (char *, size_t, char const *, ...) noexcept;
 }
 
 [[noreturn]] static inline
@@ -394,6 +394,50 @@ struct Indexed_Contigous_Memory_Iterator {
 	constexpr Indexed_Contigous_Memory_Iterator(T* ptr) : data(ptr), idx{0} {}
 };
 }
+
+/* ---------------- Vector support ----------------*/
+template<typename T, int N>
+struct vec {
+  T data[N];
+  constexpr T& operator[](int i){ return data[i]; }
+  constexpr T const& operator[](int i) const { return data[i]; }
+};
+template<typename T, int N> constexpr vec<T, N> operator+(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] + b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator+(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] + s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator+(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s + a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator+(vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = + a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator-(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] - b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator-(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] - s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator-(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s - a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator-(vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = - a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator*(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] * b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator*(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] * s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator*(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s * a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator/(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] / b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator/(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] / s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator/(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s / a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator%(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] % b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator%(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] % s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator%(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s % a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator&(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] & b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator&(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] & s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator&(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s & a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator|(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] | b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator|(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] | s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator|(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s | a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator^(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] ^ b[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator^(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] ^ s; return r; }
+template<typename T, int N> constexpr vec<T, N> operator^(T s, vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = s ^ a[i]; return r; }
+template<typename T, int N> constexpr vec<T, N> operator~(vec<T,N> a){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = ~ a[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator&&(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] && b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator||(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] || b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator==(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] == b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator!=(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] != b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator>=(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] >= b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator<=(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] <= b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator>(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] > b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator<(vec<T,N> a, vec<T,N> b){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] < b[i]; return r; }
+template<typename T, int N> constexpr vec<bool, N> operator!(vec<T,N> a){ vec<bool, N> r{}; for(int i=0;i<N;i++) r[i] = ! a[i]; return r; }
 
 /* ---------------- Slices ---------------- */
 template<typename T>
@@ -867,13 +911,15 @@ enum struct Allocator_Mode {
 	alloc_non_zero, alloc, resize, free, free_all,
 };
 
-
+// Allocator_Error's are meant to be thrown, that is, they are exceptional
+// conditions. Failing to resize an allocation or not supporting `free_all`
+// should be communicated through the return address or by querying the
+// allocator's capabilities.
 enum struct Allocator_Error : u8 {
 	none = 0,
 	out_of_memory,
-	failed_resize,
-	pointer_not_owned,
 	bad_align,
+	pointer_not_owned, /* Mostly used by tracking allocators, it's usually not worth throwing it in release builds */
 };
 
 // Allocator function, returns a error value
@@ -899,17 +945,17 @@ struct Allocator {
 	}
 
 	// Mark pointer that belongs to allocator as free
-	void free(void* ptr, isize old_size = 0, caller_location){
+	void free(void* ptr, isize old_size = 0, caller_location) noexcept {
 		_func(_impl, Mode::free, ptr, old_size, 0, 0, source_location);
 	}
 
 	// Mark all memory belonging to allocator as free
-	void free_all(caller_location){
+	void free_all(caller_location) noexcept {
 		_func(_impl, Mode::free_all, nullptr, 0, 0, 0, source_location);
 	}
 
-	// Attempt to resize allocation in-place.
-	auto resize(void* ptr, isize new_size, isize old_size, caller_location){
+	// Attempt to resize allocation *in-place*. Returns null on failure, on sucess gives back the original pointer.
+	auto resize(void* ptr, isize new_size, isize old_size, caller_location) noexcept {
 		return _func(_impl, Mode::resize, ptr, old_size, new_size, 0, source_location);
 	}
 
@@ -918,7 +964,7 @@ struct Allocator {
 		auto res = alloc(sizeof(T), alignof(T), source_location);
 		return (T*) res;
 	}
-	
+
 	template<typename T>
 	slice<T> make_slice(isize count, caller_location){
 		auto res = (T*) alloc(sizeof(T) * count, alignof(T), source_location);
@@ -955,7 +1001,9 @@ struct Arena {
 	void* last_allocation = nullptr;
 
 	uintptr required_mem(uintptr cur, isize nbytes, isize align) const {
-		assert(mem::valid_alignment(align), "Invalid memory alignment");
+		if(!mem::valid_alignment(align)){
+			throw Allocator_Error::bad_align;
+		}
 		uintptr aligned  = mem::align_forward(cur, align);
 		uintptr padding  = (uintptr)(aligned - cur);
 		uintptr required = padding + nbytes;
@@ -1097,6 +1145,57 @@ struct Null_Allocator {
 };
 }
 
+/* ---------------- Heap Allocator ---------------- */
+namespace mem {
+
+static inline void* _heap_allocator_func(
+	[[maybe_unused]] void *impl,
+	Allocator_Mode mode,
+	void *ptr,
+	[[maybe_unused]] isize old_size,
+	isize size,
+	isize align,
+	[[maybe_unused]] caller_location
+){
+	try {
+		switch (mode) {
+		case Allocator_Mode::alloc_non_zero: {
+			byte* p = new (std::align_val_t(align)) byte[size];
+			return (void*) p;
+		} break;
+
+		case Allocator_Mode::alloc: {
+			byte* p = new (std::align_val_t(align)) byte[size];
+			if(p){
+				mem::set(p, 0, size);
+			}
+			return (void*) p;
+		} break;
+
+		case Allocator_Mode::resize: {
+			return nullptr;
+		}
+
+		case Allocator_Mode::free: {
+			delete [] (byte*)ptr;
+		} break;
+
+		case Allocator_Mode::free_all:
+			return nullptr;
+		}
+
+	} catch(std::bad_alloc const&){
+		throw Allocator_Error::out_of_memory;
+	}
+
+	return nullptr;
+}
+
+static inline Allocator heap_allocator(){
+	return Allocator::from(nullptr, _heap_allocator_func);
+}
+}
+
 /* ---------------- Dynamic Array ---------------- */
 template<typename T>
 struct Dynamic_Array {
@@ -1108,7 +1207,6 @@ struct Dynamic_Array {
 	auto len() const { return length; }
 
 	auto cap() const { return capacity; }
-
 
 	void resize(isize new_cap){
 		isize new_size = new_cap * sizeof(T);
@@ -1186,7 +1284,7 @@ struct Dynamic_Array {
 		Dynamic_Array<T> arr;
 		arr.allocator = allocator;
 		if(initial_cap > 0){
-			arr.data = (int*)allocator.alloc(sizeof(T) * initial_cap, alignof(T));
+			arr.data = (T*)allocator.alloc(sizeof(T) * initial_cap, alignof(T));
 			arr.capacity = initial_cap;
 		}
 		return arr;
@@ -1196,6 +1294,10 @@ struct Dynamic_Array {
 	auto begin(){ return sub().begin(); }
 	auto end(){ return sub().end(); }
 	auto index_iter() { return sub().index_iter(); }
-
 };
+
+template<typename T>
+void destroy(Dynamic_Array<T>* arr){
+	arr->deinit();
+}
 
