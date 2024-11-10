@@ -907,9 +907,16 @@ struct Spinlock {
 
 /* ---------------- Allocator Interface ---------------- */
 namespace mem {
-enum struct Allocator_Mode {
-	alloc_non_zero, alloc, resize, free, free_all,
+enum struct Allocator_Mode : u8 {
+	alloc_non_zero, alloc, resize, free, free_all, query,
 };
+
+// Allocator capabilities
+constexpr inline u32 can_alloc_any_size  = 1 << 0;
+constexpr inline u32 can_alloc_any_align = 1 << 1;
+constexpr inline u32 can_free_any_order  = 1 << 2;
+constexpr inline u32 can_resize          = 1 << 3;
+constexpr inline u32 can_free_all        = 1 << 4;
 
 // Allocator_Error's are meant to be thrown, that is, they are exceptional
 // conditions. Failing to resize an allocation or not supporting `free_all`
@@ -1086,6 +1093,12 @@ static inline void* _arena_allocator_func(
 ){
 	auto arena = (Arena*)impl;
 	switch (mode) {
+
+	case Allocator_Mode::query: {
+		u32 capabilities = can_alloc_any_size | can_alloc_any_align | can_free_all | can_resize;
+		return (void*)(uintptr)capabilities;
+	} break;
+
 	case Allocator_Mode::alloc_non_zero: {
 		void* p = arena->alloc_non_zero(size, align);
 		if(!p){
@@ -1147,7 +1160,6 @@ struct Null_Allocator {
 
 /* ---------------- Heap Allocator ---------------- */
 namespace mem {
-
 static inline void* _heap_allocator_func(
 	[[maybe_unused]] void *impl,
 	Allocator_Mode mode,
@@ -1159,6 +1171,11 @@ static inline void* _heap_allocator_func(
 ){
 	try {
 		switch (mode) {
+		case Allocator_Mode::query: {
+			u32 capabilities = can_alloc_any_size | can_alloc_any_align | can_free_any_order;
+			return (void*)(uintptr)capabilities;
+		} break;
+
 		case Allocator_Mode::alloc_non_zero: {
 			byte* p = new (std::align_val_t(align)) byte[size];
 			return (void*) p;
