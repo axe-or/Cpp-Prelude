@@ -1338,6 +1338,78 @@ void destroy(Dynamic_Array<T>* arr){
 	arr->deinit();
 }
 
+/* ---------------- Bit Vec ---------------- */
+template<int N>
+struct Bit_Vec {
+	static constexpr int byte_length = max(1, N / 8);
+	vec<u8, byte_length> data {0};
+
+	static constexpr u8 hi_bit = 128;
+
+	constexpr auto len() const { return N; }
+	constexpr auto byte_len() const { return byte_length; }
+
+	bool get(isize idx){
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		return (data[cell] & (hi_bit >> offset)) != 0;
+	}
+
+	void set(bool val, isize idx){
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		if(val){
+			data[cell] |= (hi_bit >> offset);
+		} else {
+			data[cell] &= ~(hi_bit >> offset);
+		}
+	}
+};
+// [X] A + B - union of two sets (equivalent to A | B)
+// [X] A - B - difference of two sets (A without B’s elements) (equivalent to A &~ B)
+// [X] A & B - intersection of two sets
+// [X] A | B - union of two sets (equivalent to A + B)
+// [X] A ^ B - symmetric difference (Elements that are in A and B but not both)
+// [_] A == B - set equality
+// [_] A != B - set inequality
+
+template<int N> constexpr
+auto operator|(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data | b.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator+(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	return a | b;
+}
+
+template<int N> constexpr
+auto operator~(Bit_Vec<N> const& a){
+	Bit_Vec<N> res;
+	res.data = ~a.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator&(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data & b.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator^(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data ^ b.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator-(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data & ~b.data;
+	return res;
+}
 
 /* ---------------- Bit Array ---------------- */
 struct Bit_Array {

@@ -3,17 +3,19 @@
 #include "iostream_helpers.cpp"
 
 int main(){
-    auto arr = Bit_Array::from(mem::heap_allocator(), 16);
-    print(arr.data);
-    print(arr);
-    arr.set_resize(true, 0);
+    auto a = Bit_Vec<5>{};
+    a.set(1, 0);
+    a.set(1, 1);
+    a.set(1, 4);
 
-    print(arr);
-    arr.set_resize(true, 9);
-    print(arr);
-    arr.set_resize(false, 9);
-    print(arr);
-    arr.set_resize(true, 13);
-    print(arr);
+    auto b = Bit_Vec<5>{};
+    b.set(1, 1);
+    b.set(1, 1);
+    b.set(1, 2);
+
+    print(a);
+    print(b);
+    print(a ^ b);
+
 }
 
