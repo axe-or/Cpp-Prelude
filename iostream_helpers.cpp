@@ -5,6 +5,16 @@
 #include "prelude.hpp"
 #include <iostream>
 
+auto& operator<<(std::ostream& os, Bit_Array s){
+	os << "len: " << s.len() << " [ ";
+	for(isize i = 0; i < s.len(); i += 1){
+		os << int(s.get(i));
+		if((i+1) % 8 == 0){ os << '_'; }
+	}
+	os << " ]";
+	return os;
+}
+
 template<typename T>
 void print(T x){
 	std::cout << x << '\n';
@@ -63,3 +73,5 @@ auto& operator<<(std::ostream& os, Dynamic_Array<T> s){
 	os << ']';
 	return os;
 }
+
+

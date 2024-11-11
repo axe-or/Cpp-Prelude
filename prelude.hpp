@@ -8,7 +8,10 @@
 #include <stdbool.h>
 #include <limits.h>
 #include <atomic>
+#include <bit>
 #include <source_location>
+
+using std::bit_cast;
 
 #define caller_location \
 	std::source_location const& source_location = std::source_location::current()
@@ -50,6 +53,12 @@ struct pair {
 	A first;
 	B second;
 };
+
+template<typename T>
+pair<T> div_rem(T a, T b){
+	if(b == 0){ return {0, 0}; }
+	return {a / b, a % b};
+}
 
 template<typename T> constexpr
 T min(T a, T b){
@@ -137,9 +146,18 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 
 extern "C" {
 /* WARN: may break on some systems, remove/include `noexcept` as needed. */
-[[noreturn]] void abort() noexcept;
+[[noreturn]] void abort() ;
 extern int puts (char const*);
-extern int snprintf (char *, size_t, char const *, ...) noexcept;
+extern int snprintf (char *, size_t, char const *, ...) ;
+}
+
+[[noreturn]] static inline
+void unimplemented(caller_location){
+	char buf[MAX_PANIC_MSG_LEN];
+	int n = snprintf(buf, MAX_PANIC_MSG_LEN - 1, "%s:%d Unimplemented code.", source_location.file_name(), source_location.line());
+	buf[n] = 0;
+	puts(buf);
+	abort();
 }
 
 [[noreturn]] static inline
@@ -1318,3 +1336,73 @@ void destroy(Dynamic_Array<T>* arr){
 	arr->deinit();
 }
 
+
+/* ---------------- Bit Array ---------------- */
+struct Bit_Array {
+ 	Dynamic_Array<u8> data;
+	isize length = 0;
+	mem::Allocator allocator;
+
+	static constexpr u8 hi_bit = 128;
+
+	auto len() const { return length; }
+
+	bool get(isize idx){
+		bounds_check(idx < length, "Out of bounds access");
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		return (data[cell] & (hi_bit >> offset)) != 0;
+	}
+
+	void set(bool val, isize idx){
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		if(val){
+			data[cell] |= (hi_bit >> offset);
+		} else {
+			data[cell] &= ~(hi_bit >> offset);
+		}
+	}
+
+	static Bit_Array from(mem::Allocator allocator, isize initial_cap){
+		Bit_Array arr;
+		arr.data = Dynamic_Array<u8>::from(allocator, initial_cap);
+		arr.allocator = allocator;
+		arr.length = 0;
+		return arr;
+	}
+};
+
+/* ---------------- Hash Map ---------------- */
+// template<typename T>
+// using Hash_Map_Func = i32 (*)(T const* data);
+
+// template<typename T>
+// i32 default_hash_map_func(T const* data){
+// 	constexpr u32 fnv_prime = 0x01000193;
+// 	constexpr u32 fnv_offset_basis = 0x811c9dc5;
+//     u32 hash = fnv_offset_basis;
+
+// 	auto byte_data = slice<byte>::from((byte*) data, sizeof(T));
+// 	for(auto b : byte_data){
+// 		hash = hash ^ b;
+// 		hash = hash * fnv_prime;
+// 	}
+// 	return bit_cast<i32>(hash);
+// }
+
+// template<typename K, typename V, Hash_Map_Func<K> hash_func = default_hash_map_func>
+// struct Hash_Map {
+// 	static constexpr max_fill_ratio = 85; /* 0..100 */
+// 	slice<K> keys = {};
+// 	slice<V> values = {};
+// 	isize item_count = 0;
+// 	mem::Allocator allocator = {};
+
+// 	void set(K key, V value){
+// 	}
+
+// 	static Hash_Map from(mem::Allocator allocator, isize initial_slots){
+// 		Hash_Map<K, V> map;
+// 		map.keys = allocator.make_slice<K>(initial_slots);
+// 		map.values = allocator.make_slice<V>(initial_slots);
+// 	}
+// };
