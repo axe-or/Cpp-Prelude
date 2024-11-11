@@ -1341,14 +1341,19 @@ void destroy(Dynamic_Array<T>* arr){
 struct Bit_Array {
  	Dynamic_Array<u8> data;
 	isize length = 0;
-	mem::Allocator allocator;
 
 	static constexpr u8 hi_bit = 128;
 
 	auto len() const { return length; }
 
+	void resize(isize bit_len){
+		isize byte_len = mem::align_forward(bit_len, 8);
+		data.resize(max<isize>(16, byte_len / 8));
+		data.length = data.capacity;
+		length = bit_len;
+	}
+
 	bool get(isize idx){
-		bounds_check(idx < length, "Out of bounds access");
 		auto [cell, offset] = div_rem<isize>(idx, 8);
 		return (data[cell] & (hi_bit >> offset)) != 0;
 	}
@@ -1365,7 +1370,6 @@ struct Bit_Array {
 	static Bit_Array from(mem::Allocator allocator, isize initial_cap){
 		Bit_Array arr;
 		arr.data = Dynamic_Array<u8>::from(allocator, initial_cap);
-		arr.allocator = allocator;
 		arr.length = 0;
 		return arr;
 	}
