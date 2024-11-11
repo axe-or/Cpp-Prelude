@@ -355,15 +355,17 @@ bool valid_alignment(isize align){
 	return (align & (align - 1)) == 0 && (align != 0);
 }
 
-static inline
-uintptr align_forward(uintptr p, uintptr a){
+
+template<typename Int>
+Int align_forward(Int p, Int a){
 	assert(valid_alignment(a), "Invalid memory alignment");
-	uintptr mod = p & (a - 1);
+	Int mod = p & (a - 1);
 	if(mod > 0){
 		p += (a - mod);
 	}
 	return p;
 }
+
 }
 
 #undef _memset_impl
@@ -1029,7 +1031,7 @@ struct Arena {
 		if(!mem::valid_alignment(align)){
 			throw Allocator_Error::bad_align;
 		}
-		uintptr aligned  = mem::align_forward(cur, align);
+		uintptr aligned  = mem::align_forward<uintptr>(cur, align);
 		uintptr padding  = (uintptr)(aligned - cur);
 		uintptr required = padding + nbytes;
 		return required;
@@ -1339,17 +1341,25 @@ void destroy(Dynamic_Array<T>* arr){
 
 /* ---------------- Bit Array ---------------- */
 struct Bit_Array {
- 	Dynamic_Array<u8> data;
+ 	slice<u8> data;
 	isize length = 0;
+	mem::Allocator allocator;
 
 	static constexpr u8 hi_bit = 128;
 
 	auto len() const { return length; }
 
 	void resize(isize bit_len){
-		isize byte_len = mem::align_forward(bit_len, 8);
-		data.resize(max<isize>(16, byte_len / 8));
-		data.length = data.capacity;
+		auto byte_len = max<isize>(mem::align_forward<isize>(bit_len, 8), 1);
+		auto resize_target = max<isize>(16, byte_len / 8);
+
+		auto new_data_ptr = (u8*)allocator.resize(data.raw_data(), resize_target, data.len());
+		if(new_data_ptr == nullptr){
+			auto old_data = data;
+			new_data_ptr = (u8*)allocator.alloc(resize_target, alignof(u8));
+			allocator.destroy(old_data);
+		}
+		data = slice<u8>::from(new_data_ptr, resize_target);
 		length = bit_len;
 	}
 
@@ -1367,9 +1377,17 @@ struct Bit_Array {
 		}
 	}
 
+	void set_resize(bool val, isize idx){
+		if(idx >= length){
+			resize(idx + 1);
+		}
+		set(val, idx);
+	}
+
 	static Bit_Array from(mem::Allocator allocator, isize initial_cap){
 		Bit_Array arr;
-		arr.data = Dynamic_Array<u8>::from(allocator, initial_cap);
+		arr.allocator = allocator;
+		arr.data = allocator.make_slice<u8>(initial_cap);
 		arr.length = 0;
 		return arr;
 	}
