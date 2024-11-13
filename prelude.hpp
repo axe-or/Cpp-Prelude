@@ -8,9 +8,11 @@
 #include <stdbool.h>
 #include <limits.h>
 #include <atomic>
+#include <bit>
 #include <source_location>
 
 #define USE_NOEXCEPT_ON_STDLIB 1
+using std::bit_cast;
 
 #define caller_location \
 	std::source_location const& source_location = std::source_location::current()
@@ -52,6 +54,12 @@ struct pair {
 	A first;
 	B second;
 };
+
+template<typename T>
+pair<T> div_rem(T a, T b){
+	if(b == 0){ return {0, 0}; }
+	return {a / b, a % b};
+}
 
 template<typename T> constexpr
 T min(T a, T b){
@@ -149,6 +157,15 @@ extern "C" {
 void abort() PRELUDE_NOEXCEPT;
 int snprintf (char *, size_t, char const *, ...) PRELUDE_NOEXCEPT;
 int puts (char const*);
+}
+
+[[noreturn]] static inline
+void unimplemented(caller_location){
+	char buf[MAX_PANIC_MSG_LEN];
+	int n = snprintf(buf, MAX_PANIC_MSG_LEN - 1, "%s:%d Unimplemented code.", source_location.file_name(), source_location.line());
+	buf[n] = 0;
+	puts(buf);
+	abort();
 }
 
 [[noreturn]] static inline
@@ -348,15 +365,17 @@ bool valid_alignment(isize align){
 	return (align & (align - 1)) == 0 && (align != 0);
 }
 
-static inline
-uintptr align_forward(uintptr p, uintptr a){
+
+template<typename Int>
+Int align_forward(Int p, Int a){
 	assert(valid_alignment(a), "Invalid memory alignment");
-	uintptr mod = p & (a - 1);
+	Int mod = p & (a - 1);
 	if(mod > 0){
 		p += (a - mod);
 	}
 	return p;
 }
+
 }
 
 #undef _memset_impl
@@ -1022,7 +1041,7 @@ struct Arena {
 		if(!mem::valid_alignment(align)){
 			throw Allocator_Error::bad_align;
 		}
-		uintptr aligned  = mem::align_forward(cur, align);
+		uintptr aligned  = mem::align_forward<uintptr>(cur, align);
 		uintptr padding  = (uintptr)(aligned - cur);
 		uintptr required = padding + nbytes;
 		return required;
@@ -1325,3 +1344,165 @@ void destroy(Dynamic_Array<T>* arr){
 	arr->deinit();
 }
 
+/* ---------------- Bit Vec ---------------- */
+template<int N>
+struct Bit_Vec {
+	static constexpr int byte_length = max(1, N / 8);
+	vec<u8, byte_length> data {0};
+
+	static constexpr u8 hi_bit = 128;
+
+	constexpr auto len() const { return N; }
+	constexpr auto byte_len() const { return byte_length; }
+
+	bool get(isize idx){
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		return (data[cell] & (hi_bit >> offset)) != 0;
+	}
+
+	void set(bool val, isize idx){
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		if(val){
+			data[cell] |= (hi_bit >> offset);
+		} else {
+			data[cell] &= ~(hi_bit >> offset);
+		}
+	}
+};
+// [X] A + B - union of two sets (equivalent to A | B)
+// [X] A - B - difference of two sets (A without B’s elements) (equivalent to A &~ B)
+// [X] A & B - intersection of two sets
+// [X] A | B - union of two sets (equivalent to A + B)
+// [X] A ^ B - symmetric difference (Elements that are in A and B but not both)
+// [_] A == B - set equality
+// [_] A != B - set inequality
+
+template<int N> constexpr
+auto operator|(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data | b.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator+(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	return a | b;
+}
+
+template<int N> constexpr
+auto operator~(Bit_Vec<N> const& a){
+	Bit_Vec<N> res;
+	res.data = ~a.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator&(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data & b.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator^(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data ^ b.data;
+	return res;
+}
+
+template<int N> constexpr
+auto operator-(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	Bit_Vec<N> res;
+	res.data = a.data & ~b.data;
+	return res;
+}
+
+/* ---------------- Bit Array ---------------- */
+struct Bit_Array {
+ 	slice<u8> data;
+	isize length = 0;
+	mem::Allocator allocator;
+
+	static constexpr u8 hi_bit = 128;
+
+	auto len() const { return length; }
+
+	void resize(isize bit_len){
+		auto byte_len = max<isize>(mem::align_forward<isize>(bit_len, 8), 1);
+		auto resize_target = max<isize>(16, byte_len / 8);
+
+		auto new_data_ptr = (u8*)allocator.resize(data.raw_data(), resize_target, data.len());
+		if(new_data_ptr == nullptr){
+			auto old_data = data;
+			new_data_ptr = (u8*)allocator.alloc(resize_target, alignof(u8));
+			allocator.destroy(old_data);
+		}
+		data = slice<u8>::from(new_data_ptr, resize_target);
+		length = bit_len;
+	}
+
+	bool get(isize idx){
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		return (data[cell] & (hi_bit >> offset)) != 0;
+	}
+
+	void set(bool val, isize idx){
+		auto [cell, offset] = div_rem<isize>(idx, 8);
+		if(val){
+			data[cell] |= (hi_bit >> offset);
+		} else {
+			data[cell] &= ~(hi_bit >> offset);
+		}
+	}
+
+	void set_resize(bool val, isize idx){
+		if(idx >= length){
+			resize(idx + 1);
+		}
+		set(val, idx);
+	}
+
+	static Bit_Array from(mem::Allocator allocator, isize initial_cap){
+		Bit_Array arr;
+		arr.allocator = allocator;
+		arr.data = allocator.make_slice<u8>(initial_cap);
+		arr.length = 0;
+		return arr;
+	}
+};
+
+/* ---------------- Hash Map ---------------- */
+// template<typename T>
+// using Hash_Map_Func = i32 (*)(T const* data);
+
+// template<typename T>
+// i32 default_hash_map_func(T const* data){
+// 	constexpr u32 fnv_prime = 0x01000193;
+// 	constexpr u32 fnv_offset_basis = 0x811c9dc5;
+//     u32 hash = fnv_offset_basis;
+
+// 	auto byte_data = slice<byte>::from((byte*) data, sizeof(T));
+// 	for(auto b : byte_data){
+// 		hash = hash ^ b;
+// 		hash = hash * fnv_prime;
+// 	}
+// 	return bit_cast<i32>(hash);
+// }
+
+// template<typename K, typename V, Hash_Map_Func<K> hash_func = default_hash_map_func>
+// struct Hash_Map {
+// 	static constexpr max_fill_ratio = 85; /* 0..100 */
+// 	slice<K> keys = {};
+// 	slice<V> values = {};
+// 	isize item_count = 0;
+// 	mem::Allocator allocator = {};
+
+// 	void set(K key, V value){
+// 	}
+
+// 	static Hash_Map from(mem::Allocator allocator, isize initial_slots){
+// 		Hash_Map<K, V> map;
+// 		map.keys = allocator.make_slice<K>(initial_slots);
+// 		map.values = allocator.make_slice<V>(initial_slots);
+// 	}
+// };
