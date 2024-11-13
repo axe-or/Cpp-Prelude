@@ -10,6 +10,8 @@
 #include <atomic>
 #include <source_location>
 
+#define USE_NOEXCEPT_ON_STDLIB 1
+
 #define caller_location \
 	std::source_location const& source_location = std::source_location::current()
 
@@ -135,11 +137,18 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 /* ---------------- Assert & Panic ---------------- */
 #define MAX_PANIC_MSG_LEN 1024
 
+#if USE_NOEXCEPT_ON_STDLIB
+#define PRELUDE_NOEXCEPT noexcept
+#else
+#define PRELUDE_NOEXCEPT
+#endif
+
 extern "C" {
 /* WARN: may break on some systems, remove/include `noexcept` as needed. */
-[[noreturn]] void abort() noexcept;
-extern int puts (char const*);
-extern int snprintf (char *, size_t, char const *, ...) noexcept;
+[[noreturn]]
+void abort() PRELUDE_NOEXCEPT;
+int snprintf (char *, size_t, char const *, ...) PRELUDE_NOEXCEPT;
+int puts (char const*);
 }
 
 [[noreturn]] static inline
@@ -180,6 +189,8 @@ void bounds_check(bool predicate, cstring msg, caller_location){
 }
 
 #undef MAX_PANIC_MSG_LEN
+#undef USE_NOEXCEPT_ON_STDLIB
+#undef PRELUDE_NOEXCEPT
 
 /* ---------------- Option type ---------------- */
 template<typename T>
@@ -1149,13 +1160,9 @@ static inline void* _null_allocator_func(void *, Allocator_Mode, void *, isize, 
 	throw Allocator_Error::out_of_memory;
 }
 
-struct Null_Allocator {
-	uintptr _data = 0;
-
-	static Allocator allocator(){
-		return Allocator::from(nullptr, _null_allocator_func);
-	}
-};
+static Allocator null_allocator(){
+	return Allocator::from(nullptr, _null_allocator_func);
+}
 }
 
 /* ---------------- Heap Allocator ---------------- */
