@@ -3,10 +3,19 @@
 #include "iostream_helpers.cpp"
 
 int main(){
-	auto sw = temporal::Stopwatch{};
-	sw.reset();
-	temporal::sleep(temporal::milliseconds(2));
-	auto elapsed = sw.measure();
-	print(elapsed.count_microseconds());
+	Bit_Vec<30> a;
+	Bit_Vec<30> b;
+
+	a.data = ~a.data;
+
+	for(int i = 0; i < 30; i++) b.set(i, 1);
+	a.set(0, 0);
+	a.set(1, 0);
+	a.set(0, 0);
+	a.set(16, 0);
+	b.set(16, 0);
+
+	print(a);
+	print(b);
 }
 

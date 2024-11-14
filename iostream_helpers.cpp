@@ -85,4 +85,13 @@ auto& operator<<(std::ostream& os, Dynamic_Array<T> s){
 	return os;
 }
 
+template<typename T, int N>
+auto& operator<<(std::ostream& os, vec<T, N> s){
+	os << "[ ";
+	for(isize i = 0; i < s.len(); i += 1){
+		os << (i32)s[i] << ' ';
+	}
+	os << ']';
+	return os;
+}
 

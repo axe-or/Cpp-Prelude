@@ -450,7 +450,7 @@ bool valid_alignment(isize align){
 }
 
 
-template<typename Int>
+template<typename Int> constexpr
 Int align_forward(Int p, Int a){
 	assert(valid_alignment(a), "Invalid memory alignment");
 	Int mod = p & (a - 1);
@@ -512,9 +512,17 @@ struct Indexed_Contigous_Memory_Iterator {
 /* ---------------- Vector support ----------------*/
 template<typename T, int N>
 struct vec {
-  T data[N];
-  constexpr T& operator[](int i){ return data[i]; }
-  constexpr T const& operator[](int i) const { return data[i]; }
+	T data[N];
+	constexpr T& operator[](int i){ return data[i]; }
+	constexpr T const& operator[](int i) const { return data[i]; }
+	constexpr auto len() const { return N; }
+
+	constexpr auto sum() const {
+		T acc{0};
+		for(int i = 0; i < N; i++)
+			acc += data[i];
+		return acc;
+	}
 };
 template<typename T, int N> constexpr vec<T, N> operator+(vec<T,N> a, vec<T,N> b){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] + b[i]; return r; }
 template<typename T, int N> constexpr vec<T, N> operator+(vec<T,N> a, T s){ vec<T, N> r{}; for(int i=0;i<N;i++) r[i] = a[i] + s; return r; }
@@ -1427,7 +1435,7 @@ struct Dynamic_Array {
 /* ---------------- Bit Vec ---------------- */
 template<int N>
 struct Bit_Vec {
-	static constexpr int byte_length = max(1, N / 8);
+	static constexpr int byte_length = mem::align_forward(N, 8);
 	vec<u8, byte_length> data {0};
 
 	static constexpr u8 hi_bit = 128;
@@ -1435,12 +1443,12 @@ struct Bit_Vec {
 	constexpr auto len() const { return N; }
 	constexpr auto byte_len() const { return byte_length; }
 
-	bool get(isize idx){
+	bool get(isize idx) const {
 		auto [cell, offset] = div_rem<isize>(idx, 8);
 		return (data[cell] & (hi_bit >> offset)) != 0;
 	}
 
-	void set(bool val, isize idx){
+	void set(isize idx, bool val){
 		auto [cell, offset] = div_rem<isize>(idx, 8);
 		if(val){
 			data[cell] |= (hi_bit >> offset);
@@ -1449,13 +1457,23 @@ struct Bit_Vec {
 		}
 	}
 };
-// [X] A + B - union of two sets (equivalent to A | B)
-// [X] A - B - difference of two sets (A without B’s elements) (equivalent to A &~ B)
-// [X] A & B - intersection of two sets
-// [X] A | B - union of two sets (equivalent to A + B)
-// [X] A ^ B - symmetric difference (Elements that are in A and B but not both)
-// [_] A == B - set equality
-// [_] A != B - set inequality
+
+/* TODO: Faster implementation using mem::compare for the first segment. */
+template<int N> constexpr
+auto operator==(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	for(int i = 0; i < a.len(); i ++){
+		if(a.get(i) != b.get(i)){ return false; }
+	}
+	return true;
+}
+
+template<int N> constexpr
+auto operator!=(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
+	for(int i = 0; i < a.len(); i ++){
+		if(a.get(i) != b.get(i)){ return true; }
+	}
+	return false;
+}
 
 template<int N> constexpr
 auto operator|(Bit_Vec<N> const& a, Bit_Vec<N> const& b){
@@ -1474,6 +1492,12 @@ auto operator~(Bit_Vec<N> const& a){
 	Bit_Vec<N> res;
 	res.data = ~a.data;
 	return res;
+}
+
+// Alias to ~a
+template<int N> constexpr
+auto operator!(Bit_Vec<N> const& a){
+	return ~a;
 }
 
 template<int N> constexpr
