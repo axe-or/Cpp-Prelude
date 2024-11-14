@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <limits.h>
 #include <atomic>
+#include <chrono>
+#include <thread>
 #include <bit>
 #include <source_location>
 
@@ -142,6 +144,89 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 }
 }
 
+/* ---------------- Time ---------------- */
+// Similar to atomic, we wrap the standard library in a more convenient
+// interface. And yes, yet another alias for `time` because C was really fucking
+// stupid in using `time` as an stdlib identifier.
+namespace temporal {
+struct Duration {
+	i64 _nsec;
+
+	i64 count_nanoseconds(){
+		return _nsec;
+	}
+
+	i64 count_microseconds(){
+		return _nsec / 1'000ll;
+	}
+
+	i64 count_milliseconds(){
+		return _nsec / 1'000'000ll;
+	}
+
+	i64 count_seconds(){
+		return _nsec / 1'000'000'000ll;
+	}
+};
+
+static inline Duration nanoseconds(i64 t){
+	Duration d;
+	d._nsec = t;
+	return d;
+}
+
+static inline Duration microseconds(i64 t){
+	Duration d;
+	d._nsec = t * 1'000'000ll;
+	return d;
+}
+
+static inline Duration milliseconds(i64 t){
+	Duration d;
+	d._nsec = t * 1'000'000ll;
+	return d;
+}
+
+static inline Duration seconds(i64 t){
+	Duration d;
+	d._nsec = t * 1'000'000'000ll;
+	return d;
+}
+
+static inline
+void sleep(Duration d){
+	auto period = std::chrono::nanoseconds(d.count_nanoseconds());
+	std::this_thread::sleep_for(period);
+}
+
+using High_Res_Time_Point = std::chrono::time_point<std::chrono::high_resolution_clock>;
+
+using System_Time_Point = std::chrono::time_point<std::chrono::system_clock>;
+
+static inline High_Res_Time_Point high_res_now(){
+	return std::chrono::high_resolution_clock::now();
+}
+
+static inline System_Time_Point system_now(){
+	return std::chrono::system_clock::now();
+}
+
+struct Stopwatch {
+	High_Res_Time_Point start {};
+
+	void reset(){
+		start = high_res_now();
+	}
+
+	Duration measure() const {
+		auto now = high_res_now();
+		auto nanosecs = std::chrono::duration_cast<std::chrono::nanoseconds>(now - start);
+		return nanoseconds(nanosecs.count());
+	}
+};
+
+}
+
 /* ---------------- Assert & Panic ---------------- */
 #define MAX_PANIC_MSG_LEN 1024
 
@@ -153,8 +238,7 @@ bool compare_exchange_weak(std::atomic<T>* obj, T* expected, T desired, Memory_O
 
 extern "C" {
 /* WARN: may break on some systems, remove/include `noexcept` as needed. */
-[[noreturn]]
-void abort() PRELUDE_NOEXCEPT;
+[[noreturn]] void abort() PRELUDE_NOEXCEPT;
 int snprintf (char *, size_t, char const *, ...) PRELUDE_NOEXCEPT;
 int puts (char const*);
 }
@@ -1179,7 +1263,7 @@ static inline void* _null_allocator_func(void *, Allocator_Mode, void *, isize, 
 	throw Allocator_Error::out_of_memory;
 }
 
-static Allocator null_allocator(){
+static inline Allocator null_allocator(){
 	return Allocator::from(nullptr, _null_allocator_func);
 }
 }
@@ -1317,12 +1401,6 @@ struct Dynamic_Array {
 		return s;
 	}
 
-	void deinit(){
-		allocator.free(data);
-		data = nullptr;
-		capacity = 0;
-	}
-
 	static Dynamic_Array<T> from(mem::Allocator allocator, isize initial_cap = 16){
 		Dynamic_Array<T> arr;
 		arr.allocator = allocator;
@@ -1337,12 +1415,14 @@ struct Dynamic_Array {
 	auto begin(){ return sub().begin(); }
 	auto end(){ return sub().end(); }
 	auto index_iter() { return sub().index_iter(); }
+
+	void destroy(Dynamic_Array<T>* arr){
+		allocator.free(data);
+		data = nullptr;
+		capacity = 0;
+	}
 };
 
-template<typename T>
-void destroy(Dynamic_Array<T>* arr){
-	arr->deinit();
-}
 
 /* ---------------- Bit Vec ---------------- */
 template<int N>
@@ -1426,6 +1506,7 @@ struct Bit_Array {
 	static constexpr u8 hi_bit = 128;
 
 	auto len() const { return length; }
+	auto cap() const { return data.len(); }
 
 	void resize(isize bit_len){
 		auto byte_len = max<isize>(mem::align_forward<isize>(bit_len, 8), 1);
@@ -1462,12 +1543,17 @@ struct Bit_Array {
 		set(val, idx);
 	}
 
-	static Bit_Array from(mem::Allocator allocator, isize initial_cap){
+	static Bit_Array from(mem::Allocator allocator, isize initial_len, isize initial_cap = 4){
 		Bit_Array arr;
 		arr.allocator = allocator;
-		arr.data = allocator.make_slice<u8>(initial_cap);
-		arr.length = 0;
+		arr.data = allocator.make_slice<u8>(max(initial_len, initial_cap));
+		arr.length = initial_len;
 		return arr;
+	}
+
+	void destroy(){
+		allocator.destroy<u8>(data);
+		length = 0;
 	}
 };
 
@@ -1506,3 +1592,6 @@ struct Bit_Array {
 // 		map.values = allocator.make_slice<V>(initial_slots);
 // 	}
 // };
+
+
+

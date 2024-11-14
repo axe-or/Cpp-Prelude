@@ -6,7 +6,7 @@
 #include <iostream>
 
 auto& operator<<(std::ostream& os, Bit_Array s){
-	os << "len: " << s.len() << " [ ";
+	os << "len: " << s.len() << " cap: " << s.cap() << " [ ";
 	for(isize i = 0; i < s.len(); i += 1){
 		os << int(s.get(i));
 		if((i+1) % 8 == 0){ os << '_'; }
