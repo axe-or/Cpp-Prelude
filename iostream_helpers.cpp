@@ -5,16 +5,6 @@
 #include "prelude.hpp"
 #include <iostream>
 
-auto& operator<<(std::ostream& os, Bit_Array s){
-	os << "len: " << s.len() << " cap: " << s.cap() << " [ ";
-	for(isize i = 0; i < s.len(); i += 1){
-		os << int(s.get(i));
-		if((i+1) % 8 == 0){ os << '_'; }
-	}
-	os << " ]";
-	return os;
-}
-
 template<int N>
 auto& operator<<(std::ostream& os, Bit_Vec<N> s){
 	os << "len: " << s.len() << " [ ";

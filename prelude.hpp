@@ -1064,11 +1064,13 @@ struct Allocator {
 	using Mode = Allocator_Mode;
 
 	// Allocate chunk of aligned memory (zero-initialized)
+	[[nodiscard]]
 	auto alloc(isize size, isize align, caller_location){
 		return _func(_impl, Mode::alloc, nullptr, 0, size, align, source_location);
 	}
 
 	// Allocate chunk of aligned memory (not initialized)
+	[[nodiscard]]
 	auto alloc_non_zero(isize size, isize align, caller_location){
 		return _func(_impl, Mode::alloc_non_zero, nullptr, 0, size, align, source_location);
 	}
@@ -1084,17 +1086,20 @@ struct Allocator {
 	}
 
 	// Attempt to resize allocation *in-place*. Returns null on failure, on sucess gives back the original pointer.
+	[[nodiscard]]
 	auto resize(void* ptr, isize new_size, isize old_size, caller_location) noexcept {
 		return _func(_impl, Mode::resize, ptr, old_size, new_size, 0, source_location);
 	}
 
 	template<typename T>
+	[[nodiscard]]
 	T* make(caller_location){
 		auto res = alloc(sizeof(T), alignof(T), source_location);
 		return (T*) res;
 	}
 
 	template<typename T>
+	[[nodiscard]]
 	slice<T> make_slice(isize count, caller_location){
 		auto res = (T*) alloc(sizeof(T) * count, alignof(T), source_location);
 		return slice<T>::from(res, count);
@@ -1399,6 +1404,17 @@ struct Dynamic_Array {
 		return data[idx];
 	}
 
+	// Convert dynamic array into a slice. This empties the array and returns the slice back to the caller.
+	slice<T> to_slice(){
+		// Try to shrink in-place
+		(void)allocator.resize((void*) data, length * sizeof(T), capacity * sizeof(T));
+		auto s = sub();
+		data = nullptr;
+		capacity = 0;
+		length = 0;
+		return s;
+	}
+
 	slice<T> sub(){
 		auto s = slice<T>::from(&data[0], length);
 		return s;
@@ -1424,7 +1440,7 @@ struct Dynamic_Array {
 	auto end(){ return sub().end(); }
 	auto index_iter() { return sub().index_iter(); }
 
-	void destroy(Dynamic_Array<T>* arr){
+	void destroy(){
 		allocator.free(data);
 		data = nullptr;
 		capacity = 0;
